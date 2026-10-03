@@ -4,10 +4,11 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+from features import mount_features
 
 DB_PATH = os.getenv("DB_PATH", "/tmp/aayam.db")
 SECRET = os.getenv("JWT_SECRET", "change-this-in-render")
-app = FastAPI(title="Aayam AI", version="0.4.0")
+app = FastAPI(title="Aayam AI", version="0.5.0")
 
 def db():
     c = sqlite3.connect(DB_PATH)
@@ -86,7 +87,7 @@ class Slot(BaseModel):
 class Ask(BaseModel): question:str
 
 @app.get("/health")
-def health(): return {"status":"ok","service":"Aayam AI","version":"0.4.0"}
+def health(): return {"status":"ok","service":"Aayam AI","version":"0.5.0"}
 
 @app.post("/api/login")
 def login(p:Login):
@@ -173,15 +174,22 @@ PAGE='''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" c
 const A=document.querySelector('#app');let token=localStorage.aayamToken||'';let me=null;
 async function api(path,opt={}){let h={'Content-Type':'application/json',...(opt.headers||{})};if(token)h.Authorization='Bearer '+token;let r=await fetch('/api'+path,{...opt,headers:h});let j=await r.json();if(!r.ok)throw Error(j.detail||'Request failed');return j}
 function login(){A.innerHTML='<div class="login"><form class="card" id="f"><h1>Aayam AI</h1><p class="muted">University Intelligence Platform</p><input id="e" value="admin@aayam.ai"><input id="p" value="Admin@123" type="password"><button>Sign in</button><p id="err"></p></form></div>';f.onsubmit=async x=>{x.preventDefault();try{let r=await api('/login',{method:'POST',body:JSON.stringify({email:e.value,password:p.value})});token=r.access_token;localStorage.aayamToken=token;boot()}catch(z){err.textContent=z.message}}}
-function shell(){A.innerHTML='<div class="shell"><aside class="side"><div class="brand">Aayam AI</div><p class="muted">University OS</p><button onclick="dash()">Dashboard</button><button onclick="students()">Students</button><button onclick="admissions()">Admissions</button><button onclick="timetable()">Timetable</button><button onclick="ask()">Ask Aayam AI</button><hr style="border-color:#2b3040"><small>'+me.full_name+'<br>'+me.role+'</small><button onclick="localStorage.removeItem(\'aayamToken\');location.reload()">Logout</button></aside><main class="main" id="v"></main></div>'}
+function shell(){A.innerHTML='<div class="shell"><aside class="side"><div class="brand">Aayam AI</div><p class="muted">University OS</p><button onclick="dash()">Dashboard</button><button onclick="students()">Students</button><button onclick="admissions()">Admissions</button><button onclick="timetable()">Timetable</button><button onclick="documents()">Documents</button><button onclick="notifications()">Notifications</button><button onclick="imports()">Bulk Import</button><button onclick="ask()">Ask Aayam AI</button><hr style="border-color:#2b3040"><small>'+me.full_name+'<br>'+me.role+'</small><button onclick="localStorage.removeItem(\'aayamToken\');location.reload()">Logout</button></aside><main class="main" id="v"></main></div>'}
 async function dash(){let d=await api('/dashboard');v.innerHTML='<h1>University Command Center</h1><p class="muted">Live data from Aayam Core</p><div class="grid">'+[['Students',d.students],['Faculty',d.faculty],['Applicants',d.applicants],['Fee Due','INR '+d.fee_due_total.toLocaleString()]].map(x=>'<div class="card metric"><span class="muted">'+x[0]+'</span><b>'+x[1]+'</b></div>').join('')+'</div><div class="card" style="margin-top:18px"><b>Average attendance</b><h2>'+(d.attendance_avg??'—')+'%</h2></div>'}
-async function students(){let r=await api('/students');v.innerHTML='<h1>Students</h1><div class="table"><table><tr><th>Enrollment</th><th>Name</th><th>Program</th><th>Attendance</th><th>CGPA</th><th>Fee Due</th></tr>'+r.map(x=>'<tr><td>'+x.enrollment_no+'</td><td><b>'+x.full_name+'</b></td><td>'+x.program+'</td><td>'+x.attendance+'%</td><td>'+x.cgpa+'</td><td>INR '+x.fee_due.toLocaleString()+'</td></tr>').join('')+'</table></div>'}
+async function students(){let r=await api('/students');v.innerHTML='<h1>Students</h1><div class="table"><table><tr><th>Enrollment</th><th>Name</th><th>Program</th><th>Attendance</th><th>CGPA</th><th>Fee Due</th><th></th></tr>'+r.map(x=>'<tr><td>'+x.enrollment_no+'</td><td><b>'+x.full_name+'</b></td><td>'+x.program+'</td><td>'+x.attendance+'%</td><td>'+x.cgpa+'</td><td>INR '+x.fee_due.toLocaleString()+'</td><td><button onclick="student360('+x.id+')">360</button></td></tr>').join('')+'</table></div>'}
+async function student360(id){let x=await api('/students/'+id+'/360');v.innerHTML='<h1>'+x.profile.full_name+' — Student 360</h1><div class="grid"><div class="card"><span class="muted">Program</span><b>'+x.profile.program+'</b></div><div class="card"><span class="muted">Attendance</span><b>'+x.profile.attendance+'%</b></div><div class="card"><span class="muted">CGPA</span><b>'+x.profile.cgpa+'</b></div><div class="card"><span class="muted">Risk</span><b>'+x.risk_level+'</b></div></div><div class="card" style="margin-top:18px"><h3>Risk flags</h3><p>'+ (x.risk_flags.join(', ')||'None') +'</p><h3>Timeline</h3>'+x.timeline.map(t=>'<p>• '+t.label+'</p>').join('')+'</div>'}
 async function admissions(){let r=await api('/admissions');v.innerHTML='<h1>Admissions Pipeline</h1><div class="table"><table><tr><th>Application</th><th>Name</th><th>Program</th><th>Score</th><th>Stage</th></tr>'+r.map(x=>'<tr><td>'+x.application_no+'</td><td><b>'+x.full_name+'</b></td><td>'+x.program+'</td><td>'+x.score+'</td><td><select onchange="stage('+x.id+',this.value)">'+['applied','review','shortlisted','admitted','rejected','withdrawn'].map(s=>'<option '+(s==x.stage?'selected':'')+'>'+s+'</option>').join('')+'</select></td></tr>').join('')+'</table></div>'}
 async function stage(id,s){try{await api('/admissions/'+id,{method:'PATCH',body:JSON.stringify({stage:s})})}catch(e){alert(e.message)}}
 async function timetable(){let r=await api('/timetable');v.innerHTML='<h1>Timetable</h1><p class="muted">Room, faculty and cohort conflicts are blocked by the backend.</p><div class="table"><table><tr><th>Day</th><th>Time</th><th>Course</th><th>Faculty</th><th>Room</th></tr>'+r.map(x=>'<tr><td>'+['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][x.weekday]+'</td><td>'+x.start_time+'-'+x.end_time+'</td><td><b>'+x.course_code+'</b> '+x.course_title+'</td><td>'+x.faculty+'</td><td>'+x.room+'</td></tr>').join('')+'</table></div>'}
+async function documents(){let r=await api('/documents');v.innerHTML='<h1>Documents</h1><p class="muted">Policy and university knowledge base foundation.</p><div class="grid">'+r.map(x=>'<div class="card"><span class="pill">'+x.category+'</span><h3>'+x.title+'</h3><p>'+x.content_preview+'</p></div>').join('')+'</div>'}
+async function notifications(){let r=await api('/notifications');v.innerHTML='<h1>Notifications</h1>'+r.map(x=>'<div class="card" style="margin-bottom:12px"><b>'+x.title+'</b><p>'+x.message+'</p></div>').join('')}
+function imports(){v.innerHTML='<h1>Bulk Student Import</h1><div class="card"><p class="muted">Paste CSV with enrollment_no,full_name,email,department,program,semester,cgpa,attendance,fee_due</p><textarea id="csv" rows="10">enrollment_no,full_name,email,department,program,semester,cgpa,attendance,fee_due\nSGT26CSE010,Demo Student,demo@example.com,CSE,B.Tech CSE,1,8.1,82,0</textarea><button onclick="runImport()">Import</button><div id="imp" class="answer">Ready.</div></div>'}
+async function runImport(){try{let r=await api('/import/students',{method:'POST',body:JSON.stringify({csv_text:csv.value})});imp.textContent=JSON.stringify(r,null,2)}catch(e){imp.textContent=e.message}}
 function ask(){v.innerHTML='<h1>Ask Aayam AI</h1><div class="card"><textarea id="q">Show students below 75% attendance</textarea><button onclick="runAsk()">Ask</button><div id="ans" class="answer">Ready.</div></div>'}
 async function runAsk(){try{let r=await api('/ai',{method:'POST',body:JSON.stringify({question:q.value})});ans.textContent=r.answer+(r.data?'\n\n'+JSON.stringify(r.data,null,2):'')}catch(e){ans.textContent=e.message}}
 async function boot(){if(!token)return login();try{me=await api('/me');shell();dash()}catch(e){localStorage.removeItem('aayamToken');token='';login()}}boot();
 </script></body></html>'''
 @app.get("/",response_class=HTMLResponse)
 def root(): return PAGE
+
+mount_features(app, db, user_from, scope_students)
